@@ -184,9 +184,8 @@ Think of it as:
 
 ---
 
-# 🔥 Big Picture (Why instructor made you install these)
+# 🔥 Big Picture 
 
-They’re setting you up for **real backend engineering**, not just tutorials.
 
 | Tool            | Purpose      | Why it matters                   |
 | --------------- | ------------ | -------------------------------- |
