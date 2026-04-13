@@ -77,6 +77,15 @@ func main() {
 }
 
 // $ go run main.go
+// Contact Added: skyy
+// Contact Added: alice
+// Contact Added: jim
+// ------ Listing Contacts ------
+// 1 ID: 1, Name: skyy, Email: skyy@test.com, Phone: 111-333
+// 2 ID: 2, Name: alice, Email: alice@test.com, Phone: 222-333
+// 3 ID: 3, Name: jim, Email: jim@test.com, Phone: 333-333
+// ----------------------------
+// skyy found
 
 
 
