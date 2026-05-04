@@ -3,50 +3,79 @@ package main
 import (
 	"fmt"
 	"sync"
+	"time"
 )
 
 // 📂 09_concurrency
-// Closing Channels - with WaitGroups
+// Understaning Mutex
+
+type BankAcc struct {
+	Balance int
+	Mu sync.Mutex
+}
+
+func (b *BankAcc) Deposit(amt int){
+	b.Mu.Lock()
+	defer b.Mu.Unlock()
+
+	b.Balance+=amt
+
+	fmt.Println("Deposit:",amt)
+}
+
+func (b *BankAcc) Withdraw(amt int){
+	b.Mu.Lock()
+	defer b.Mu.Unlock()
+
+	if b.Balance < amt {
+		fmt.Println("Cannot withdraw that much amt:",amt)
+		return
+	}
+
+		b.Balance-=amt
+
+	fmt.Println("Withdraw:",amt)
+}
+
+func (b *BankAcc) BalanceInfo()int{
+	b.Mu.Lock()
+	defer b.Mu.Unlock()
+
+	return b.Balance
+}
+
 
 func main() {
-	jobs:=make(chan int,5)
-	//done:=make(chan bool)
-
 	var wg sync.WaitGroup
+	var acc = &BankAcc{Balance: 200}
 
-	wg.Add(1)
+	for i:=range 10 {
+		wg.Add(1)
 
-	// start a goroutine
-	go func(wg *sync.WaitGroup) {
-		defer wg.Done()
-		for {
-			r,ok:=<-jobs
-			if ok {
-				fmt.Println("Got this message!",r)
-			}else{
-				//done<-false
-				fmt.Println("Channel Closed..!")
-				return
-			}
-		}
-	}(&wg)
+		go func(amt int) {
+			defer wg.Done()
+			time.Sleep(time.Duration(amt) * time.Millisecond)
+			acc.Deposit(amt)
 
-		for i := 1; i <= 3; i++ {
-			jobs<-i
-			fmt.Println("Sending..",i)
-		}
+		}(i+1)
+	}
 
-		close(jobs)
-	// <-done
+
+
 	wg.Wait()
+
+	fmt.Println("Account:",acc.Balance)
 }
 
 // $ go run main.go
-// Sending.. 1
-// Sending.. 2
-// Sending.. 3
-// Got this message! 1
-// Got this message! 2
-// Got this message! 3
-// Channel Closed..!
-
+// Deposit: 1
+// Deposit: 2
+// Deposit: 3
+// Deposit: 4
+// Deposit: 5
+// Deposit: 6
+// Deposit: 8
+// Deposit: 7
+// Deposit: 9
+// Deposit: 10
+// Account: 255

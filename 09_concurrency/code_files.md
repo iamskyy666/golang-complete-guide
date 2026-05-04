@@ -1272,3 +1272,1125 @@ They also communicate:
 * stream termination
 
 That is why channels are such a powerful abstraction in Go concurrency.
+
+```go 
+package main
+
+import (
+	"context"
+	"fmt"
+	"time"
+)
+
+// 📂 09_concurrency
+// 💻 Create a ping-ponger small project
+
+func ping(ctx context.Context, ch chan string){
+	for {
+		select{
+		case <-ctx.Done():
+			return
+		case ch<-fmt.Sprintf("🟢 ping %v",time.Now()):
+			time.Sleep(1 * time.Second)	
+		}
+	}
+}
+
+func pong(ctx context.Context, ch chan string){
+	for {
+		select{
+		case <-ctx.Done():
+			return
+		case ch <-fmt.Sprintf("🔵 pong %v",time.Now()):
+			time.Sleep(1 * time.Second)	
+		}
+	}
+}
+
+func main() {
+	ctx,cancel:=context.WithCancel(context.Background())
+	defer cancel()
+
+	pingCh:= make(chan string)
+	done:= make(chan struct{})
+
+	go ping(ctx,pingCh)
+	go pong(ctx,pingCh)
+
+	go func() {
+		timeout:=time.After(5 * time.Second)
+		for{
+			select{
+			case <-timeout:
+				fmt.Println("Ops. completed ✅")
+				close(pingCh)
+				done <-struct{}{}
+				return
+			case msg:= <-pingCh:
+				fmt.Println(msg)	
+			}
+		}
+	}()
+
+	<-done
+	fmt.Println("Done ☑️")
+}
+
+// $ go run main.go
+// 🟢 ping 2026-05-02 14:41:53.6709971 +0530 IST m=+0.001432601
+// 🔵 pong 2026-05-02 14:41:53.6709971 +0530 IST m=+0.001432601
+// 🟢 ping 2026-05-02 14:41:54.6724315 +0530 IST m=+1.002867001
+// 🔵 pong 2026-05-02 14:41:54.6724315 +0530 IST m=+1.002867001
+// 🔵 pong 2026-05-02 14:41:55.6729275 +0530 IST m=+2.003363001
+// 🟢 ping 2026-05-02 14:41:55.6729275 +0530 IST m=+2.003363001
+// 🟢 ping 2026-05-02 14:41:56.6733093 +0530 IST m=+3.003744801
+// 🔵 pong 2026-05-02 14:41:56.6733093 +0530 IST m=+3.003744801
+// 🟢 ping 2026-05-02 14:41:57.6737194 +0530 IST m=+4.004154901
+// 🔵 pong 2026-05-02 14:41:57.674064 +0530 IST m=+4.004499501
+// Ops. completed ✅
+// Done ☑️
+```
+
+This is actually a very rich concurrency example.
+
+It demonstrates:
+
+* goroutines
+* channels
+* `select`
+* context cancellation
+* cooperative shutdown
+* timeout handling
+* synchronization
+* producer-consumer concurrency
+* coordination between multiple goroutines
+
+This is very close to real-world concurrent systems design.
+
+Let's dissect it deeply.
+
+---
+
+# High-Level Architecture
+
+This program creates:
+
+| Component          | Role                        |
+| ------------------ | --------------------------- |
+| `ping()` goroutine | Producer                    |
+| `pong()` goroutine | Producer                    |
+| `pingCh` channel   | Shared communication stream |
+| monitor goroutine  | Consumer/controller         |
+| `context.Context`  | Cancellation system         |
+| `done` channel     | Completion synchronization  |
+
+---
+
+# Conceptual Flow
+
+```text id="jlwm40"
+ping goroutine ─┐
+                ├──> pingCh ───> controller goroutine
+pong goroutine ─┘
+```
+
+---
+
+# Main Goal of Program
+
+The program:
+
+1. Starts two concurrent producers
+2. Both continuously send messages
+3. Main controller consumes messages
+4. After 5 seconds:
+
+   * stop everything
+   * cleanup
+   * exit gracefully
+
+---
+
+# Step 1 — Imports
+
+```go id="jlwm41"
+import (
+	"context"
+	"fmt"
+	"time"
+)
+```
+
+---
+
+# `context`
+
+Provides:
+
+* cancellation
+* deadlines
+* lifecycle propagation
+
+Very important in production Go systems.
+
+---
+
+# `time`
+
+Used for:
+
+* delays
+* timestamps
+* timeout handling
+
+---
+
+# Step 2 — `ping()` Function
+
+```go id="jlwm42"
+func ping(ctx context.Context, ch chan string)
+```
+
+---
+
+# Parameters
+
+| Parameter | Purpose              |
+| --------- | -------------------- |
+| `ctx`     | cancellation control |
+| `ch`      | output channel       |
+
+---
+
+# Infinite Loop
+
+```go id="jlwm43"
+for {
+```
+
+This goroutine runs forever until cancelled.
+
+---
+
+# `select`
+
+```go id="jlwm44"
+select {
+```
+
+Very important concurrency primitive.
+
+`select` waits for:
+
+```text id="jlwm45"
+multiple concurrent communication events
+```
+
+---
+
+# Case 1 — Context Cancellation
+
+```go id="jlwm46"
+case <-ctx.Done():
+	return
+```
+
+---
+
+# What Is `ctx.Done()`?
+
+`Done()` returns a channel.
+
+When context cancelled:
+
+```text id="jlwm47"
+channel closes
+```
+
+---
+
+# Meaning
+
+This line means:
+
+```text id="jlwm48"
+"If cancellation signal arrives,
+exit goroutine."
+```
+
+---
+
+# Extremely Important
+
+This is:
+
+# cooperative cancellation
+
+The goroutine voluntarily stops itself.
+
+---
+
+# Case 2 — Send Message
+
+```go id="jlwm49"
+case ch <- fmt.Sprintf("🟢 ping %v", time.Now()):
+```
+
+This attempts:
+
+```text id="jlwm50"
+send message into channel
+```
+
+---
+
+# Important Detail
+
+Because this send is inside `select`:
+
+the send only occurs if:
+
+```text id="jlwm51"
+channel operation is ready
+```
+
+---
+
+# What Message Looks Like
+
+```text id="jlwm52"
+🟢 ping 2026-05-02 ...
+```
+
+Includes current timestamp.
+
+---
+
+# Then
+
+```go id="jlwm53"
+time.Sleep(1 * time.Second)
+```
+
+Pauses producer for 1 second.
+
+---
+
+# Why?
+
+Prevents infinite high-speed message spam.
+
+Without sleep:
+
+```text id="jlwm54"
+CPU usage skyrockets
+millions of messages generated
+```
+
+---
+
+# `pong()` Function
+
+Almost identical.
+
+Only difference:
+
+```go id="jlwm55"
+"🔵 pong"
+```
+
+instead of:
+
+```go id="jlwm56"
+"🟢 ping"
+```
+
+---
+
+# Important Design Detail
+
+Both goroutines send into SAME channel:
+
+```go id="jlwm57"
+pingCh
+```
+
+This creates:
+
+# fan-in pattern
+
+---
+
+# Fan-In Pattern
+
+Multiple producers:
+
+```text id="jlwm58"
+merge messages into one stream
+```
+
+---
+
+# Step 3 — Main Function
+
+---
+
+# Create Context
+
+```go id="jlwm59"
+ctx, cancel := context.WithCancel(context.Background())
+```
+
+---
+
+# What Is Happening?
+
+Creates:
+
+| Object   | Purpose                          |
+| -------- | -------------------------------- |
+| `ctx`    | shared cancellation context      |
+| `cancel` | function to trigger cancellation |
+
+---
+
+# `context.Background()`
+
+Root context.
+
+Base parent context.
+
+---
+
+# `WithCancel`
+
+Creates child context with cancellation capability.
+
+---
+
+# Why Important?
+
+Now all goroutines can listen for:
+
+```text id="jlwm60"
+shutdown signal
+```
+
+---
+
+# defer cancel()
+
+```go id="jlwm61"
+defer cancel()
+```
+
+Ensures cleanup when main exits.
+
+---
+
+# Step 4 — Create Channels
+
+---
+
+# Main Communication Channel
+
+```go id="jlwm62"
+pingCh := make(chan string)
+```
+
+---
+
+# Important
+
+This is:
+
+# unbuffered channel
+
+---
+
+# Meaning
+
+Each send requires active receiver.
+
+Strong synchronization.
+
+---
+
+# Completion Signal Channel
+
+```go id="jlwm63"
+done := make(chan struct{})
+```
+
+---
+
+# Why `struct{}`?
+
+Very important Go idiom.
+
+---
+
+# Empty Struct
+
+```go id="jlwm64"
+struct{}
+```
+
+occupies:
+
+```text id="jlwm65"
+zero bytes
+```
+
+---
+
+# Meaning
+
+We do NOT care about data.
+
+Only signal matters.
+
+---
+
+# Common Idiom
+
+```go id="jlwm66"
+chan struct{}
+```
+
+means:
+
+```text id="jlwm67"
+signal-only channel
+```
+
+---
+
+# Step 5 — Start Producers
+
+```go id="jlwm68"
+go ping(ctx, pingCh)
+go pong(ctx, pingCh)
+```
+
+Now we have:
+
+| Goroutine | Purpose    |
+| --------- | ---------- |
+| ping      | producer   |
+| pong      | producer   |
+| main      | controller |
+
+---
+
+# Step 6 — Start Controller Goroutine
+
+```go id="jlwm69"
+go func() {
+```
+
+This goroutine:
+
+* receives messages
+* handles timeout
+* coordinates shutdown
+
+---
+
+# Create Timeout
+
+```go id="jlwm70"
+timeout := time.After(5 * time.Second)
+```
+
+---
+
+# What Does `time.After()` Do?
+
+Returns channel.
+
+After 5 seconds:
+
+```text id="jlwm71"
+channel receives value
+```
+
+---
+
+# Important
+
+This creates:
+
+# timeout event source
+
+---
+
+# Infinite Loop
+
+```go id="jlwm72"
+for {
+```
+
+Controller continuously monitors:
+
+* timeout
+* incoming messages
+
+---
+
+# select
+
+```go id="jlwm73"
+select {
+```
+
+This is the concurrency heart of the program.
+
+---
+
+# Case 1 — Timeout Occurs
+
+```go id="jlwm74"
+case <-timeout:
+```
+
+After 5 seconds:
+
+timeout channel becomes ready.
+
+---
+
+# Then
+
+```go id="jlwm75"
+fmt.Println("Ops. completed ✅")
+```
+
+---
+
+# CRITICAL PROBLEMATIC LINE
+
+```go id="jlwm76"
+close(pingCh)
+```
+
+This is actually dangerous.
+
+---
+
+# Why Dangerous?
+
+Because:
+
+```text id="jlwm77"
+multiple goroutines are still sending
+```
+
+Specifically:
+
+* `ping()`
+* `pong()`
+
+both still executing:
+
+```go id="jlwm78"
+ch <- ...
+```
+
+---
+
+# Sending On Closed Channel
+
+Causes:
+
+```text id="jlwm79"
+panic: send on closed channel
+```
+
+---
+
+# Why Didn't Program Crash?
+
+Race timing.
+
+The goroutines likely stopped before next send.
+
+But this code is NOT safe.
+
+---
+
+# Proper Shutdown Should Be
+
+```go id="jlwm80"
+cancel()
+```
+
+NOT:
+
+```go id="jlwm81"
+close(pingCh)
+```
+
+because producers own sending side.
+
+---
+
+# Important Channel Rule
+
+# Sender closes channel.
+
+Receivers should NOT close channels they do not own.
+
+---
+
+# Then
+
+```go id="jlwm82"
+done <- struct{}{}
+```
+
+Signals completion.
+
+---
+
+# Then
+
+```go id="jlwm83"
+return
+```
+
+Controller goroutine exits.
+
+---
+
+# Case 2 — Receive Message
+
+```go id="jlwm84"
+case msg := <-pingCh:
+```
+
+Receives message from:
+
+* ping OR pong
+
+---
+
+# Important
+
+Because channel shared:
+
+messages interleave nondeterministically.
+
+---
+
+# Example
+
+Could be:
+
+```text id="jlwm85"
+ping
+pong
+pong
+ping
+```
+
+Scheduling decides order.
+
+---
+
+# Then
+
+```go id="jlwm86"
+fmt.Println(msg)
+```
+
+prints message.
+
+---
+
+# Step 7 — Main Waits
+
+```go id="jlwm87"
+<-done
+```
+
+Main blocks until controller signals completion.
+
+---
+
+# Then
+
+```go id="jlwm88"
+fmt.Println("Done ☑️")
+```
+
+Program exits.
+
+---
+
+# VERY IMPORTANT CONCURRENCY CONCEPTS
+
+---
+
+# 1. Fan-In Concurrency
+
+Two producers:
+
+```text id="jlwm89"
+merge into one communication stream
+```
+
+---
+
+# 2. Select-Based Event Loop
+
+Controller goroutine behaves like:
+
+# event loop
+
+similar to:
+
+* Node.js event loop
+* OS multiplexers
+* network pollers
+
+---
+
+# 3. Cooperative Cancellation
+
+```go id="jlwm90"
+ctx.Done()
+```
+
+allows graceful goroutine shutdown.
+
+---
+
+# 4. Synchronization Through Channels
+
+Unbuffered channel synchronizes sender and receiver.
+
+---
+
+# 5. Timeout Coordination
+
+```go id="’wini91"
+time.After()
+```
+
+creates asynchronous timeout event.
+
+---
+
+# 6. Concurrent Nondeterminism
+
+Output order varies.
+
+Concurrency inherently nondeterministic.
+
+---
+
+# IMPORTANT BUG IN CODE
+
+This line is unsafe:
+
+```go id="’wini92"
+close(pingCh)
+```
+
+because producers still sending.
+
+---
+
+# Correct Version
+
+Should be:
+
+```go id="’wini93"
+case <-timeout:
+	fmt.Println("Ops. completed ✅")
+
+	cancel()
+
+	done <- struct{}{}
+	return
+```
+
+---
+
+# Why Better?
+
+Because:
+
+```text id="’wini94"
+producers stop themselves gracefully
+```
+
+via:
+
+```go id="
+```
+
+
+```go id="jlwm95"
+case <-ctx.Done():
+	return
+```
+
+Then channel does NOT need closing.
+
+---
+
+# Better Production Design
+
+Even more correct version:
+
+```go id="jlwm96"
+var wg sync.WaitGroup
+```
+
+Wait for producers to fully exit before shutdown.
+
+---
+
+# Why?
+
+Without waiting:
+
+program may terminate while goroutines still running.
+
+---
+
+# Another Important Subtlety
+
+This line:
+
+```go id="’wini97"
+case msg := <-pingCh:
+```
+
+does NOT check:
+
+```go id="’wini98"
+ok
+```
+
+If channel closes:
+
+receives return:
+
+```text id="’wini99"
+zero value
+```
+
+For strings:
+
+```text id="જ્મ્વિ100"
+""
+```
+
+Could create strange behavior.
+
+---
+
+# Proper Receive
+
+Should be:
+
+```go id="’wini101"
+case msg, ok := <-pingCh:
+	if !ok {
+		return
+	}
+	fmt.Println(msg)
+```
+
+---
+
+# Why This Example Is Valuable
+
+This small program demonstrates many real-world concurrency patterns:
+
+| Concept              | Real-world Usage       |
+| -------------------- | ---------------------- |
+| Producers            | APIs/services/workers  |
+| Shared channel       | event stream           |
+| Select               | event multiplexing     |
+| Context cancellation | graceful shutdown      |
+| Timeout              | request deadlines      |
+| Done channel         | lifecycle coordination |
+| Fan-in               | aggregation systems    |
+
+---
+
+# Internal Runtime Perspective
+
+At runtime:
+
+---
+
+# Goroutines
+
+Runtime scheduler manages:
+
+* ping goroutine
+* pong goroutine
+* controller goroutine
+* main goroutine
+
+---
+
+# When Channel Blocks
+
+Runtime:
+
+```text id="’wini102"
+parks goroutine
+runs another
+```
+
+Efficient concurrency.
+
+---
+
+# When `select` Executes
+
+Runtime checks readiness of:
+
+* timeout channel
+* pingCh receive
+
+and chooses ready case.
+
+---
+
+# Mental Model of Whole System
+
+```text id="’wini103"
+           ┌─────────┐
+           │ ping() │
+           └────┬────┘
+                │
+                │
+                ▼
+           ┌─────────┐
+           │ pingCh  │
+           └─────────┘
+                ▲
+                │
+                │
+           ┌────┴────┐
+           │ pong()  │
+           └─────────┘
+
+                │
+                ▼
+
+        Controller Goroutine
+        ├── Receives messages
+        ├── Handles timeout
+        └── Coordinates shutdown
+```
+
+---
+
+# Most Important Design Insight
+
+This program is essentially implementing:
+
+# concurrent event-driven architecture
+
+using:
+
+* goroutines
+* channels
+* select
+* context cancellation
+
+This is exactly the kind of architecture used in:
+
+* servers
+* streaming systems
+* websocket systems
+* distributed services
+* background workers
+* message processors
+
+---
+
+# Final Summary
+
+This program demonstrates:
+
+| Feature            | Purpose                  |
+| ------------------ | ------------------------ |
+| Goroutines         | Concurrent execution     |
+| Shared channel     | Message communication    |
+| Fan-in             | Merge producers          |
+| Unbuffered channel | Synchronization          |
+| Select             | Event multiplexing       |
+| Context            | Cancellation propagation |
+| Timeout            | Lifecycle control        |
+| Done channel       | Shutdown synchronization |
+| Sleep              | Rate limiting            |
+| Infinite loops     | Long-running workers     |
+
+---
+
+# MOST IMPORTANT TAKEAWAY
+
+The deepest idea in this code is:
+
+> Go concurrency is fundamentally about coordinating independent concurrent activities through communication and cancellation signals.
+
+Not merely:
+
+```text id="’wini104"
+"running things in parallel"
+```
+
+This example demonstrates how Go builds concurrent systems as:
+
+```text id="’wini105"
+communicating event-driven components
+```
+
+which is the core philosophy behind Go's concurrency model.
+
+```go
+package main
+
+import (
+	"fmt"
+	"sync"
+)
+
+// 📂 09_concurrency
+// Understaning Mutex
+// race conditions..
+// A Mutex is a mutual exclusion lock. The zero value for a Mutex is an unlocked mutex.
+
+func main() {
+
+	counter:=0 // critical-section
+
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+
+	for range 10 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			mu.Lock()
+			counter++
+			mu.Unlock()
+		}()
+	}
+
+	wg.Wait()
+	fmt.Println(counter)
+
+	// $ go run main.go
+	// 10
+}
+```

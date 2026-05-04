@@ -5546,3 +5546,2313 @@ throughput and decoupling
 ```
 
 Understanding that distinction is one of the key steps from beginner-level Go concurrency to real systems engineering.
+
+# `context` Package in Go — Deep Dive 🔵
+
+The `context` package is one of the most important packages in modern Go.
+
+In real-world Go systems:
+
+* APIs
+* microservices
+* databases
+* distributed systems
+* HTTP servers
+* gRPC
+* cloud infrastructure
+
+almost everything uses `context`.
+
+But beginners often misunderstand it as merely:
+
+```text id="jlwm106"
+"timeout package"
+```
+
+That is far too shallow.
+
+The `context` package is fundamentally about:
+
+# controlling the lifecycle of concurrent operations
+
+---
+
+To truly understand `context`, we need to understand:
+
+1. The fundamental concurrency problem it solves
+2. Cancellation propagation
+3. Goroutine lifecycle management
+4. Deadlines and timeouts
+5. Request-scoped values
+6. Distributed systems implications
+7. Internal implementation
+8. Tree structure of contexts
+9. Memory/resource cleanup
+10. Production architecture patterns
+
+---
+
+# 1. The Fundamental Problem
+
+Imagine we launch goroutines:
+
+```go id="jlwm107"
+go fetchUser()
+go fetchOrders()
+go fetchNotifications()
+```
+
+What happens if:
+
+* client disconnects?
+* request times out?
+* server shuts down?
+* operation becomes unnecessary?
+
+Without coordination:
+
+```text id="’wini108"
+goroutines keep running forever
+```
+
+---
+
+# This Creates Serious Problems
+
+* goroutine leaks
+* memory waste
+* CPU waste
+* DB connections wasted
+* network requests continue unnecessarily
+
+---
+
+# Example
+
+Suppose HTTP client disconnects.
+
+But database query still running.
+
+Without cancellation:
+
+```text id="’wini109"
+system wastes resources
+```
+
+---
+
+# Need A Mechanism For
+
+```text id="’wini110"
+cancellation propagation
+```
+
+This is exactly what `context` solves.
+
+---
+
+# 2. What Is Context?
+
+A `Context` is:
+
+> A mechanism for carrying deadlines, cancellation signals, and request-scoped values across API boundaries and goroutines.
+
+---
+
+# Very Important
+
+Context is NOT:
+
+* global state
+* dependency injection container
+* arbitrary data store
+
+---
+
+# Context Exists For:
+
+| Purpose               | Meaning              |
+| --------------------- | -------------------- |
+| Cancellation          | Stop work            |
+| Deadlines             | Finish before time   |
+| Timeouts              | Auto-cancel          |
+| Request-scoped values | Metadata propagation |
+
+---
+
+# 3. The Core Design Philosophy
+
+Context allows:
+
+```text id="’wini111"
+parent operations
+control child operations
+```
+
+---
+
+# Think Of It As
+
+# Lifecycle Management Tree
+
+---
+
+# Visual Model
+
+```text id="’wini112"
+Request
+ ├── DB Query
+ ├── Cache Lookup
+ ├── API Call
+ └── Background Task
+```
+
+If request canceled:
+
+```text id="’wini113"
+everything beneath it cancels
+```
+
+---
+
+# 4. Context Interface
+
+Core interface:
+
+```go id="’wini114"
+type Context interface {
+	Deadline() (deadline time.Time, ok bool)
+
+	Done() <-chan struct{}
+
+	Err() error
+
+	Value(key any) any
+}
+```
+
+---
+
+# These 4 Methods Define Everything
+
+---
+
+# 5. `Done()` — The Heart of Context
+
+Most important method.
+
+```go id="’wini115"
+Done() <-chan struct{}
+```
+
+Returns channel.
+
+---
+
+# When Context Cancels
+
+This channel closes.
+
+---
+
+# Extremely Important
+
+Context cancellation is implemented using:
+
+# channel closing
+
+---
+
+# Example
+
+```go id="’wini116"
+select {
+case <-ctx.Done():
+	return
+}
+```
+
+Meaning:
+
+```text id="’wini117"
+"If cancellation signal arrives,
+stop execution."
+```
+
+---
+
+# 6. `Err()`
+
+After cancellation:
+
+```go id="’wini118"
+ctx.Err()
+```
+
+returns reason.
+
+---
+
+# Possible Values
+
+| Error                      | Meaning          |
+| -------------------------- | ---------------- |
+| `context.Canceled`         | Explicit cancel  |
+| `context.DeadlineExceeded` | Timeout/deadline |
+
+---
+
+# Example
+
+```go id="’wini119"
+if err := ctx.Err(); err != nil {
+	fmt.Println(err)
+}
+```
+
+---
+
+# 7. `Deadline()`
+
+Returns:
+
+```go id="’wini120"
+deadline, ok := ctx.Deadline()
+```
+
+---
+
+# Meaning
+
+Operation should finish before deadline.
+
+---
+
+# Important
+
+Allows downstream systems to adapt behavior.
+
+---
+
+# Example
+
+Database may avoid expensive query if little time remains.
+
+---
+
+# 8. `Value()`
+
+Stores request-scoped metadata.
+
+---
+
+# Example
+
+```go id="’wini121"
+ctx.Value("userID")
+```
+
+---
+
+# Common Uses
+
+* request IDs
+* auth tokens
+* tracing info
+* correlation IDs
+
+---
+
+# IMPORTANT
+
+Context values are NOT for:
+
+* optional params
+* business data
+* large objects
+
+---
+
+# 9. Root Contexts
+
+Two root contexts exist.
+
+---
+
+# `context.Background()`
+
+```go id="’wini122"
+ctx := context.Background()
+```
+
+Used in:
+
+* main
+* server startup
+* tests
+* root operations
+
+---
+
+# `context.TODO()`
+
+Placeholder when unsure what context to use.
+
+---
+
+# 10. Derived Contexts
+
+Most contexts derive from parent contexts.
+
+---
+
+# Context Tree
+
+```text id="’wini123"
+Background
+   ↓
+Request Context
+   ↓
+DB Context
+   ↓
+API Context
+```
+
+---
+
+# Critical Property
+
+Cancellation propagates downward.
+
+---
+
+# 11. `context.WithCancel`
+
+Creates cancelable child context.
+
+---
+
+# Example
+
+```go id="’wini124"
+ctx, cancel := context.WithCancel(context.Background())
+```
+
+---
+
+# Returns
+
+| Value    | Meaning               |
+| -------- | --------------------- |
+| `ctx`    | child context         |
+| `cancel` | cancellation function |
+
+---
+
+# Example
+
+```go id="’wini125"
+go worker(ctx)
+
+cancel()
+```
+
+All goroutines using ctx receive cancellation.
+
+---
+
+# Worker Example
+
+```go id="’wini126"
+func worker(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			fmt.Println("stopping")
+			return
+
+		default:
+			fmt.Println("working")
+		}
+	}
+}
+```
+
+---
+
+# 12. Internal Cancellation Mechanism
+
+Internally:
+
+`cancel()`:
+
+1. closes done channel
+2. propagates to child contexts
+3. wakes blocked goroutines
+
+---
+
+# Important
+
+Cancellation is:
+
+# cooperative
+
+NOT forced termination.
+
+---
+
+# Goroutines Must Cooperate
+
+Meaning:
+
+goroutine voluntarily checks:
+
+```go id="’wini127"
+ctx.Done()
+```
+
+---
+
+# Context Cannot Kill Goroutines
+
+Go intentionally avoids forced thread termination.
+
+Why?
+
+Forced termination causes:
+
+* corrupted state
+* leaked locks
+* inconsistent memory
+* unsafe cleanup
+
+---
+
+# 13. `context.WithTimeout`
+
+Very common.
+
+---
+
+# Example
+
+```go id="’wini128"
+ctx, cancel := context.WithTimeout(
+	context.Background(),
+	5*time.Second,
+)
+defer cancel()
+```
+
+---
+
+# Behavior
+
+After 5 seconds:
+
+```text id="’wini129"
+context automatically cancels
+```
+
+---
+
+# Equivalent To
+
+```text id="’wini130"
+deadline = now + 5 seconds
+```
+
+---
+
+# Extremely Important For
+
+* HTTP requests
+* DB queries
+* RPC calls
+* distributed systems
+
+---
+
+# 14. `context.WithDeadline`
+
+Like timeout but uses exact timestamp.
+
+---
+
+# Example
+
+```go id="’wini131"
+ctx, cancel := context.WithDeadline(
+	context.Background(),
+	time.Now().Add(10*time.Second),
+)
+```
+
+---
+
+# 15. Timeout Example
+
+```go id="’wini132"
+func slowOperation(ctx context.Context) {
+	select {
+	case <-time.After(10 * time.Second):
+		fmt.Println("finished")
+
+	case <-ctx.Done():
+		fmt.Println("cancelled")
+	}
+}
+```
+
+---
+
+# Why Powerful?
+
+Allows operations to stop immediately when unnecessary.
+
+---
+
+# 16. `context.WithValue`
+
+Creates context carrying metadata.
+
+---
+
+# Example
+
+```go id="’wini133"
+ctx := context.WithValue(
+	context.Background(),
+	"userID",
+	42,
+)
+```
+
+---
+
+# Retrieve
+
+```go id="’wini134"
+id := ctx.Value("userID")
+```
+
+---
+
+# Important Best Practice
+
+Use custom key types.
+
+---
+
+# BAD
+
+```go id="’wini135"
+"context.WithValue(ctx, "id", 1)"
+```
+
+---
+
+# GOOD
+
+```go id="’wini136"
+type key string
+
+const userKey key = "userID"
+```
+
+Avoids collisions.
+
+---
+
+# 17. Context Propagation
+
+One of the most important ideas.
+
+---
+
+# Example
+
+```go id="’wini137"
+func handler(ctx context.Context) {
+	dbQuery(ctx)
+	apiCall(ctx)
+	cacheLookup(ctx)
+}
+```
+
+All downstream operations share same lifecycle.
+
+---
+
+# If Client Disconnects
+
+Everything cancels automatically.
+
+---
+
+# 18. Context in HTTP Servers
+
+Go HTTP server automatically provides request context.
+
+---
+
+# Example
+
+```go id="’wini138"
+func handler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+}
+```
+
+---
+
+# Important
+
+If client disconnects:
+
+```text id="’wini139"
+request context cancels automatically
+```
+
+---
+
+# This Is Huge
+
+Prevents enormous resource waste.
+
+---
+
+# 19. Database Integration
+
+Modern DB drivers support context.
+
+---
+
+# Example
+
+```go id="’wini140"
+db.QueryContext(ctx, query)
+```
+
+---
+
+# Meaning
+
+Database query stops if:
+
+* timeout occurs
+* request canceled
+* client disconnects
+
+---
+
+# 20. Distributed Systems Importance
+
+In microservices:
+
+```text id="’wini141"
+Request
+ → Service A
+ → Service B
+ → Database
+ → Cache
+```
+
+Context propagates through entire chain.
+
+---
+
+# Benefits
+
+* coordinated cancellation
+* request tracing
+* deadline propagation
+* observability
+
+---
+
+# 21. Goroutine Leak Prevention
+
+One of context's biggest purposes.
+
+---
+
+# Bad
+
+```go id="’wini142"
+go func() {
+	for {
+		work()
+	}
+}()
+```
+
+No shutdown mechanism.
+
+Possible leak forever.
+
+---
+
+# Good
+
+```go id="’wini143"
+go func(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+
+		default:
+			work()
+		}
+	}
+}(ctx)
+```
+
+---
+
+# 22. Context Tree Structure
+
+Internally contexts form parent-child tree.
+
+---
+
+# Visual Model
+
+```text id="’wini144"
+Background
+   ├── Request A
+   │      ├── DB Query
+   │      └── API Call
+   │
+   └── Request B
+```
+
+---
+
+# Cancellation Cascades Downward
+
+Cancel parent:
+
+```text id="’wini145"
+all descendants cancel
+```
+
+---
+
+# Child Cannot Cancel Parent
+
+Very important.
+
+Control flows downward only.
+
+---
+
+# 23. Internal Implementation
+
+Internally context implementations use:
+
+* channels
+* mutexes
+* atomic operations
+* linked parent-child relationships
+
+---
+
+# Simplified Model
+
+```text id="’wini146"
+Context {
+	parent
+	done channel
+	children
+	error
+	deadline
+	values
+}
+```
+
+---
+
+# 24. Why `Done()` Uses Closed Channel
+
+Very elegant design.
+
+---
+
+# Closing Channel Advantages
+
+* broadcasts to all listeners
+* non-blocking wakeup
+* efficient synchronization
+
+---
+
+# Example
+
+Many goroutines:
+
+```go id="’wini147"
+<-ctx.Done()
+```
+
+All wake instantly when channel closes.
+
+---
+
+# 25. Context and Select
+
+Context designed to work naturally with:
+
+```go id="’wini148"
+select
+```
+
+---
+
+# Example
+
+```go id="’wini149"
+select {
+case result := <-ch:
+	return result
+
+case <-ctx.Done():
+	return ctx.Err()
+}
+```
+
+---
+
+# This Pattern Is Everywhere In Production Go
+
+---
+
+# 26. Context Is Immutable
+
+Important property.
+
+---
+
+# Example
+
+```go id="’wini150"
+ctx2 := context.WithValue(ctx, key, value)
+```
+
+Creates NEW context.
+
+Original unchanged.
+
+---
+
+# Why Important?
+
+Immutable structures safer in concurrency.
+
+---
+
+# 27. Best Practices
+
+---
+
+# ALWAYS Pass Context First
+
+Convention:
+
+```go id="’wini151"
+func DoSomething(ctx context.Context)
+```
+
+---
+
+# NEVER Store Context In Struct
+
+Bad practice.
+
+Pass explicitly.
+
+---
+
+# ALWAYS Call cancel()
+
+```go id="’wini152"
+ctx, cancel := context.WithTimeout(...)
+defer cancel()
+```
+
+---
+
+# Why?
+
+Avoid resource leaks.
+
+---
+
+# NEVER Use Context For Optional Params
+
+Context is for:
+
+* lifecycle
+* metadata
+
+NOT random function config.
+
+---
+
+# 28. Common Beginner Mistake
+
+Ignoring cancellation.
+
+---
+
+# BAD
+
+```go id="’wini153"
+func worker(ctx context.Context) {
+	for {
+		work()
+	}
+}
+```
+
+---
+
+# GOOD
+
+```go id="’wini154"
+select {
+case <-ctx.Done():
+	return
+default:
+	work()
+}
+```
+
+---
+
+# 29. Computer Science Perspective
+
+Context essentially implements:
+
+# hierarchical cooperative cancellation
+
+combined with:
+
+* metadata propagation
+* deadline coordination
+* concurrent lifecycle management
+
+---
+
+# Similar Ideas Exist In
+
+| System              | Similar Concept       |
+| ------------------- | --------------------- |
+| Unix                | process trees/signals |
+| Erlang              | supervision trees     |
+| Java                | interruption          |
+| .NET                | cancellation tokens   |
+| Distributed systems | request propagation   |
+
+---
+
+# 30. Why Context Is So Important
+
+Modern systems are:
+
+* distributed
+* concurrent
+* network-heavy
+* failure-prone
+
+Without coordinated cancellation:
+
+systems waste enormous resources.
+
+---
+
+# Context Enables
+
+```text id="’wini155"
+bounded lifetimes
+```
+
+for concurrent operations.
+
+This is critical in scalable systems.
+
+---
+
+# Final Summary
+
+# What Is Context?
+
+A mechanism for propagating:
+
+* cancellation
+* deadlines
+* timeouts
+* request-scoped metadata
+
+across concurrent operations.
+
+---
+
+# Core Methods
+
+| Method       | Purpose             |
+| ------------ | ------------------- |
+| `Done()`     | cancellation signal |
+| `Err()`      | cancellation reason |
+| `Deadline()` | operation deadline  |
+| `Value()`    | request metadata    |
+
+---
+
+# Core Constructors
+
+| Function         | Purpose             |
+| ---------------- | ------------------- |
+| `Background()`   | root context        |
+| `WithCancel()`   | manual cancellation |
+| `WithTimeout()`  | auto-timeout        |
+| `WithDeadline()` | absolute deadline   |
+| `WithValue()`    | metadata            |
+
+---
+
+# Most Important Insight
+
+The true purpose of `context` is NOT merely timeouts.
+
+It is:
+
+> Coordinated lifecycle management for concurrent operations.
+
+That is why `context` became foundational in modern Go systems programming.
+
+# Mutexes in Go — Deep Computer Science Explanation 👨🏻‍💻
+
+Mutexes are one of the most fundamental synchronization primitives in computer science.
+
+In Go, mutexes are provided primarily through:
+
+```go id="jlwm156"
+sync.Mutex
+```
+
+and:
+
+```go id="’wini157"
+sync.RWMutex
+```
+
+To beginners, a mutex may seem like:
+
+```text id="’wini158"
+"a lock"
+```
+
+But internally, mutexes are deeply connected to:
+
+* operating systems
+* CPU memory models
+* atomic instructions
+* thread scheduling
+* critical sections
+* race conditions
+* cache coherence
+* concurrent correctness
+
+To truly understand mutexes, we need to understand:
+
+1. Why mutexes exist
+2. Race conditions
+3. Shared memory concurrency
+4. Critical sections
+5. Atomicity
+6. Memory visibility
+7. Mutex internals
+8. Scheduler interaction
+9. Deadlocks
+10. RWMutex
+11. Performance tradeoffs
+12. Mutexes vs channels
+13. Production design patterns
+
+---
+
+# 1. The Fundamental Concurrency Problem
+
+Concurrency means:
+
+```text id="’wini159"
+multiple execution flows
+access shared state simultaneously
+```
+
+---
+
+# Example
+
+```go id="’wini160"
+counter++
+```
+
+Looks harmless.
+
+Actually internally:
+
+```text id="’wini161"
+1. load counter
+2. increment value
+3. store result
+```
+
+---
+
+# Problem
+
+If two goroutines execute simultaneously:
+
+```text id="’wini162"
+both may read same old value
+```
+
+---
+
+# Example
+
+Suppose:
+
+```text id="’wini163"
+counter = 5
+```
+
+Two goroutines increment concurrently.
+
+---
+
+# Goroutine A
+
+Reads:
+
+```text id="’wini164"
+5
+```
+
+---
+
+# Goroutine B
+
+Also reads:
+
+```text id="’wini165"
+5
+```
+
+---
+
+# Both Store
+
+```text id="’wini166"
+6
+```
+
+instead of:
+
+```text id="’wini167"
+7
+```
+
+---
+
+# This Is Called
+
+# Race Condition
+
+---
+
+# 2. What Is a Race Condition?
+
+A race condition occurs when:
+
+> Program correctness depends on unpredictable execution timing.
+
+---
+
+# Why Dangerous?
+
+Results become:
+
+* nondeterministic
+* inconsistent
+* hard to reproduce
+* production-only bugs
+
+---
+
+# Example
+
+Sometimes output:
+
+```text id="’wini168"
+999
+```
+
+Sometimes:
+
+```text id="’wini169"
+1000
+```
+
+Sometimes:
+
+```text id="’wini170"
+872
+```
+
+---
+
+# Concurrency Without Synchronization Is Unsafe
+
+Shared mutable memory requires coordination.
+
+---
+
+# 3. Critical Sections
+
+A:
+
+# critical section
+
+is code accessing shared state that must not execute concurrently.
+
+---
+
+# Example
+
+```go id="’wini171"
+counter++
+```
+
+Critical section because shared variable modified.
+
+---
+
+# Goal
+
+Ensure:
+
+```text id="’wini172"
+only one goroutine executes critical section at a time
+```
+
+---
+
+# 4. What Is a Mutex?
+
+Mutex means:
+
+# Mutual Exclusion
+
+---
+
+# Definition
+
+A mutex is a synchronization primitive that guarantees:
+
+```text id="’wini173"
+exclusive access
+```
+
+to a critical section.
+
+---
+
+# Core Idea
+
+Only ONE goroutine may hold mutex at once.
+
+---
+
+# Visual Model
+
+```text id="’wini174"
+Goroutine A → LOCKED
+Goroutine B → WAITING
+Goroutine C → WAITING
+```
+
+---
+
+# 5. Basic Mutex Usage
+
+---
+
+# Example
+
+```go id="’wini175"
+var mu sync.Mutex
+```
+
+---
+
+# Lock
+
+```go id="’wini176"
+mu.Lock()
+```
+
+Acquire mutex.
+
+---
+
+# Unlock
+
+```go id="’wini177"
+mu.Unlock()
+```
+
+Release mutex.
+
+---
+
+# Full Example
+
+```go id="’wini178"
+package main
+
+import (
+	"fmt"
+	"sync"
+)
+
+var counter int
+var mu sync.Mutex
+
+func increment(wg *sync.WaitGroup) {
+	defer wg.Done()
+
+	mu.Lock()
+	counter++
+	mu.Unlock()
+}
+
+func main() {
+	var wg sync.WaitGroup
+
+	for i := 0; i < 1000; i++ {
+		wg.Add(1)
+		go increment(&wg)
+	}
+
+	wg.Wait()
+
+	fmt.Println(counter)
+}
+```
+
+---
+
+# What Happens?
+
+Only one goroutine at a time executes:
+
+```go id="’wini179"
+counter++
+```
+
+---
+
+# Result
+
+Correct output:
+
+```text id="’wini180"
+1000
+```
+
+every time.
+
+---
+
+# 6. Lock Acquisition
+
+This line:
+
+```go id="’wini181"
+mu.Lock()
+```
+
+does NOT merely set boolean flag.
+
+Internally far more complex.
+
+---
+
+# Runtime Behavior
+
+If mutex already held:
+
+goroutine:
+
+```text id="’wini182"
+blocks
+```
+
+---
+
+# Go Scheduler Then
+
+* parks blocked goroutine
+* runs another goroutine
+
+Efficient waiting.
+
+---
+
+# Important
+
+Blocked goroutines:
+
+```text id="’wini183"
+do not consume CPU
+```
+
+---
+
+# 7. Unlocking
+
+```go id="’wini184"
+mu.Unlock()
+```
+
+releases mutex.
+
+Runtime wakes waiting goroutine.
+
+---
+
+# Internally
+
+Runtime maintains waiting queue.
+
+---
+
+# 8. Mutex Protects Shared State
+
+This is extremely important.
+
+Mutex does NOT protect code.
+
+Mutex protects:
+
+# shared memory
+
+---
+
+# Wrong Mental Model
+
+```text id="’wini185"
+"mutex locks function"
+```
+
+---
+
+# Correct Mental Model
+
+```text id="’wini186"
+"mutex synchronizes access to shared data"
+```
+
+---
+
+# 9. Happens-Before Guarantee
+
+Mutexes also synchronize memory visibility.
+
+---
+
+# Go Memory Model
+
+Guarantees:
+
+```text id="’wini187"
+Unlock happens-before subsequent Lock
+```
+
+---
+
+# Meaning
+
+All writes before unlock become visible after lock.
+
+---
+
+# Example
+
+```go id="’wini188"
+mu.Lock()
+data = 42
+mu.Unlock()
+```
+
+Another goroutine locking later sees updated value.
+
+---
+
+# Extremely Important
+
+Without synchronization:
+
+CPUs may reorder memory operations.
+
+---
+
+# 10. Why CPUs Need Synchronization
+
+Modern CPUs:
+
+* reorder instructions
+* use caches
+* execute out-of-order
+* buffer writes
+
+Without synchronization:
+
+memory visibility becomes inconsistent.
+
+---
+
+# Mutexes Implicitly Create
+
+* memory barriers
+* cache synchronization
+* ordering guarantees
+
+---
+
+# 11. `defer Unlock()` Pattern
+
+Very common idiom.
+
+---
+
+# Example
+
+```go id="’wini189"
+mu.Lock()
+defer mu.Unlock()
+```
+
+---
+
+# Why Important?
+
+Guarantees unlock even if:
+
+* panic occurs
+* early return happens
+* error path taken
+
+---
+
+# 12. Common Beginner Mistake
+
+Forgetting unlock.
+
+---
+
+# Example
+
+```go id="’wini190"
+mu.Lock()
+
+if err != nil {
+	return
+}
+```
+
+Deadlock possible.
+
+---
+
+# Because
+
+Mutex never released.
+
+---
+
+# 13. Deadlocks
+
+One of the biggest mutex dangers.
+
+---
+
+# Simple Deadlock
+
+```go id="’wini191"
+mu.Lock()
+mu.Lock()
+```
+
+Same goroutine blocks forever.
+
+---
+
+# Why?
+
+Go mutexes are:
+
+# non-reentrant
+
+---
+
+# Meaning
+
+Same goroutine cannot re-acquire same mutex.
+
+---
+
+# 14. Multi-Mutex Deadlock
+
+Classic concurrency problem.
+
+---
+
+# Example
+
+```text id="’wini192"
+Goroutine A:
+  lock A
+  waits for B
+
+Goroutine B:
+  lock B
+  waits for A
+```
+
+---
+
+# Circular Wait
+
+Program freezes forever.
+
+---
+
+# 15. Lock Contention
+
+Occurs when many goroutines compete for same mutex.
+
+---
+
+# Example
+
+```text id="’wini193"
+1000 goroutines
+1 mutex
+```
+
+---
+
+# Result
+
+* waiting increases
+* throughput decreases
+* scalability suffers
+
+---
+
+# Mutex Can Become Bottleneck
+
+Especially in multicore systems.
+
+---
+
+# 16. Critical Section Size
+
+Important performance concept.
+
+---
+
+# BAD
+
+```go id="’wini194"
+mu.Lock()
+
+time.Sleep(5 * time.Second)
+
+mu.Unlock()
+```
+
+---
+
+# Why Bad?
+
+Lock held unnecessarily long.
+
+Blocks everyone else.
+
+---
+
+# GOOD
+
+Keep critical sections:
+
+```text id="’wini195"
+small and fast
+```
+
+---
+
+# 17. `sync.RWMutex`
+
+Specialized mutex.
+
+Supports:
+
+* multiple readers
+* single writer
+
+---
+
+# Why Useful?
+
+Read-heavy workloads.
+
+---
+
+# Example
+
+```go id="’wini196"
+var rw sync.RWMutex
+```
+
+---
+
+# Read Lock
+
+```go id="’wini197"
+rw.RLock()
+```
+
+Multiple readers allowed simultaneously.
+
+---
+
+# Read Unlock
+
+```go id="’wini198"
+rw.RUnlock()
+```
+
+---
+
+# Write Lock
+
+```go id="’wini199"
+rw.Lock()
+```
+
+Exclusive access.
+
+Blocks everyone.
+
+---
+
+# Example
+
+```go id="’wini200"
+rw.RLock()
+fmt.Println(data)
+rw.RUnlock()
+```
+
+---
+
+# Internal Semantics
+
+---
+
+# Multiple Readers
+
+Allowed concurrently.
+
+---
+
+# Writer
+
+Requires total exclusivity.
+
+---
+
+# Visual Model
+
+```text id="’wini201"
+Reader A ✓
+Reader B ✓
+Reader C ✓
+
+Writer ✗ waits
+```
+
+---
+
+# When Writer Acquires
+
+```text id="’wini202"
+all readers blocked
+```
+
+---
+
+# 18. When To Use RWMutex
+
+Use when:
+
+```text id="’wini203"
+reads >> writes
+```
+
+Example:
+
+* caches
+* configs
+* lookup tables
+
+---
+
+# When NOT To Use
+
+If writes frequent.
+
+RWMutex overhead may exceed benefit.
+
+---
+
+# 19. Mutex Internals
+
+Internally Go mutexes use:
+
+* atomic instructions
+* spinning
+* semaphores
+* scheduler parking
+
+---
+
+# Simplified Internal State
+
+```text id="’wini204"
+Mutex {
+	locked
+	waiters
+	semaphore
+}
+```
+
+---
+
+# Fast Path
+
+If unlocked:
+
+```text id="’wini205"
+atomic CAS succeeds
+```
+
+Very fast.
+
+---
+
+# Slow Path
+
+If contention high:
+
+goroutine parks via scheduler.
+
+---
+
+# 20. Atomic CAS
+
+Mutexes heavily rely on:
+
+# Compare-And-Swap
+
+CPU atomic instruction.
+
+---
+
+# Example Conceptually
+
+```text id="’wini206"
+if state == unlocked:
+	set locked
+```
+
+done atomically by CPU.
+
+---
+
+# 21. Spinning
+
+Before sleeping, goroutines may briefly:
+
+```text id="’wini207"
+spin
+```
+
+Meaning:
+
+busy-wait hoping mutex releases soon.
+
+---
+
+# Why?
+
+Sleeping/waking expensive.
+
+Short spinning may be faster.
+
+---
+
+# 22. Mutexes vs Channels
+
+Very important Go design topic.
+
+---
+
+# Mutexes
+
+Best for:
+
+```text id="’wini208"
+protecting shared state
+```
+
+---
+
+# Channels
+
+Best for:
+
+```text id="’wini209"
+communication and coordination
+```
+
+---
+
+# Example
+
+Shared counter:
+
+mutex ideal.
+
+---
+
+# Pipeline system:
+
+channels ideal.
+
+---
+
+# Important Reality
+
+Not every concurrency problem should use channels.
+
+Go is pragmatic.
+
+---
+
+# 23. Mutexes vs Atomic Operations
+
+For very simple operations:
+
+```go id="’wini210"
+atomic.AddInt64()
+```
+
+may outperform mutex.
+
+---
+
+# Why?
+
+Avoids scheduler interaction.
+
+---
+
+# But
+
+Atomics are harder to reason about.
+
+Mutexes simpler and safer.
+
+---
+
+# 24. Data Races
+
+Go race detector helps detect races.
+
+---
+
+# Run With
+
+```bash id="’wini211"
+go run -race main.go
+```
+
+or:
+
+```bash id="’wini212"
+go test -race
+```
+
+---
+
+# Extremely Valuable Tool
+
+Used heavily in production Go development.
+
+---
+
+# 25. Common Mutex Mistakes
+
+---
+
+# A. Forgetting Unlock
+
+Causes deadlock.
+
+---
+
+# B. Copying Mutexes
+
+Very dangerous.
+
+---
+
+# BAD
+
+```go id="’wini213"
+m2 := m1
+```
+
+Mutexes must not be copied after use.
+
+---
+
+# C. Holding Lock Too Long
+
+Reduces concurrency.
+
+---
+
+# D. Lock Ordering Issues
+
+Causes deadlocks.
+
+---
+
+# E. Over-Synchronization
+
+Too many locks hurt performance.
+
+---
+
+# 26. Embedded Mutex Pattern
+
+Common idiom.
+
+---
+
+# Example
+
+```go id="’wini214"
+type Counter struct {
+	mu sync.Mutex
+	n  int
+}
+```
+
+---
+
+# Methods
+
+```go id="’wini215"
+func (c *Counter) Inc() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.n++
+}
+```
+
+---
+
+# Very Common In Production Go
+
+---
+
+# 27. Mutex Granularity
+
+Important architecture decision.
+
+---
+
+# Coarse-Grained Locking
+
+One big mutex.
+
+Simple but lower concurrency.
+
+---
+
+# Fine-Grained Locking
+
+Many smaller mutexes.
+
+Higher concurrency but more complexity.
+
+---
+
+# Tradeoff
+
+```text id="’wini216"
+simplicity vs scalability
+```
+
+---
+
+# 28. Starvation
+
+Possible issue.
+
+---
+
+# Example
+
+One goroutine repeatedly acquires mutex quickly.
+
+Others wait long time.
+
+---
+
+# Go Runtime Includes Fairness Mechanisms
+
+To reduce starvation.
+
+---
+
+# 29. Mutexes and Scheduler
+
+Blocked goroutines interact closely with scheduler.
+
+---
+
+# When Lock Unavailable
+
+Runtime:
+
+```text id="’wini217"
+parks goroutine
+```
+
+Later:
+
+```text id="’wini218"
+wakes waiter
+```
+
+---
+
+# Important
+
+Go mutexes are tightly integrated with runtime.
+
+---
+
+# 30. Computer Science Perspective
+
+Mutexes implement:
+
+# mutual exclusion
+
+one of the foundational synchronization problems in concurrent computing.
+
+---
+
+# Related Theoretical Concepts
+
+| Concept           | Relation                 |
+| ----------------- | ------------------------ |
+| Critical sections | Protected by mutex       |
+| Semaphores        | Related primitive        |
+| Monitors          | Higher-level abstraction |
+| Atomic operations | Mutex foundation         |
+| Memory barriers   | Visibility guarantees    |
+| Scheduling        | Blocking/wakeup          |
+
+---
+
+# 31. Why Mutexes Matter
+
+Without synchronization:
+
+concurrent shared-memory programming becomes:
+
+```text id="’wini219"
+nondeterministic chaos
+```
+
+Mutexes restore correctness.
+
+---
+
+# Final Summary
+
+# What Is a Mutex?
+
+A synchronization primitive providing exclusive access to shared state.
+
+---
+
+# Core Operations
+
+| Operation   | Meaning           |
+| ----------- | ----------------- |
+| `Lock()`    | acquire mutex     |
+| `Unlock()`  | release mutex     |
+| `RLock()`   | shared read lock  |
+| `RUnlock()` | release read lock |
+
+---
+
+# Key Guarantees
+
+| Guarantee             | Meaning                   |
+| --------------------- | ------------------------- |
+| Mutual exclusion      | one writer at a time      |
+| Memory visibility     | synchronized reads/writes |
+| Blocking coordination | safe waiting              |
+
+---
+
+# Use Mutexes When
+
+* protecting shared memory
+* managing in-memory state
+* synchronizing critical sections
+
+---
+
+# Most Important Insight
+
+Mutexes are fundamentally about:
+
+> Making concurrent access to shared memory deterministic and correct.
+
+They are one of the core building blocks of all modern concurrent systems.
