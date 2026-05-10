@@ -1,0 +1,1 @@
+WriteString() is like Write, but writes the contents of string s rather than a slice of bytes. ☑️
