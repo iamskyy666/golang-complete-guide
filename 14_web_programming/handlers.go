@@ -31,7 +31,7 @@ func (app *application) Home(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func About(w http.ResponseWriter, r *http.Request) {
+func (app *application) About(w http.ResponseWriter, r *http.Request) {
 	aboutContent:= `<h2>About</h2>
 	<div>We are a small shop, doing great things!</div>
 	`
@@ -42,7 +42,7 @@ func About(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func Contact(w http.ResponseWriter, r *http.Request) {
+func (app *application) Contact(w http.ResponseWriter, r *http.Request) {
 	contactContent:= `
 	<h2>Contact</h2>
 	<div>send as an email on blablabla@test.com</div>
