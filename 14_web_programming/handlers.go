@@ -19,7 +19,8 @@ var htmlTmp =`
 		`
 // dummy handlers - ROUTING AND HTTP Handlers()
 
-func Home(w http.ResponseWriter, r *http.Request) {
+func (app *application) Home(w http.ResponseWriter, r *http.Request) {
+	app.infoLog.Printf("%s %s",r.Method,r.URL.Path)
 	if r.Method == http.MethodPost{
 		// ... some form-processing here
 	}
