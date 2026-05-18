@@ -1,0 +1,54 @@
+package main
+
+import (
+	"fmt"
+	"log"
+	"net/http"
+)
+
+var htmlTmp =`
+		<!DOCTYPE html>
+		<html>
+		<head>
+		<title>%s</title>
+		</head>
+		<body>
+		%s
+		</body>
+		</html>
+		`
+// dummy handlers - ROUTING AND HTTP Handlers()
+
+func Home(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodPost{
+		// ... some form-processing here
+	}
+	homeContent:= fmt.Sprintf(htmlTmp,"Hello", "<h1> Hello, Welcome to the HomePage")
+	_,err:=w.Write([]byte(homeContent))
+	if err!=nil{
+		log.Fatal("ERROR: ",err.Error())
+	}
+}
+
+func About(w http.ResponseWriter, r *http.Request) {
+	aboutContent:= `<h2>About</h2>
+	<div>We are a small shop, doing great things!</div>
+	`
+	aboutContent = fmt.Sprintf(htmlTmp,"About us",aboutContent)
+	_,err:=w.Write([]byte(aboutContent))
+	if err!=nil{
+		log.Fatal("ERROR: ",err.Error())
+	}
+}
+
+func Contact(w http.ResponseWriter, r *http.Request) {
+	contactContent:= `
+	<h2>Contact</h2>
+	<div>send as an email on blablabla@test.com</div>
+	`
+	contactContent = fmt.Sprintf(htmlTmp,"Contact us",contactContent)
+	_,err:=w.Write([]byte(contactContent))
+	if err!=nil{
+		log.Fatal("ERROR: ",err.Error())
+	}
+}
