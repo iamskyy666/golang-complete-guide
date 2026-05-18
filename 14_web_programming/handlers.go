@@ -24,11 +24,7 @@ func (app *application) Home(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodPost{
 		// ... some form-processing here
 	}
-	homeContent:= fmt.Sprintf(htmlTmp,"Hello", "<h1> Hello, Welcome to the HomePage")
-	_,err:=w.Write([]byte(homeContent))
-	if err!=nil{
-		log.Fatal("ERROR: ",err.Error())
-	}
+	app.Render(w,"index.html",nil)
 }
 
 func (app *application) About(w http.ResponseWriter, r *http.Request) {

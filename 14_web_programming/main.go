@@ -8,11 +8,12 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-// RESTRUCTURE the routing
+// Simple template rendering engine
 type application struct{
 	errorLog *log.Logger
 	infoLog  *log.Logger
 	userRepo UserRepo
+	templateDir string
 }
 
 func main() {
@@ -27,7 +28,7 @@ func main() {
 		errorLog: log.New(os.Stderr, "ERROR\t",log.Ltime | log.LstdFlags | log.Lmicroseconds | log.Lshortfile),
 		infoLog: log.New(os.Stderr, "ERROR\t",log.Ltime | log.LstdFlags),
 		userRepo: NewSQLUserRepository(db),
-
+		templateDir: "./14_web_programming/templates",
 	 }
 
 	 log.Println("Server listening on PORT: 8080 ✅")
