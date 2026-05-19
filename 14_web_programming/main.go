@@ -8,7 +8,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-// Template Layouts And CSS
+// Static Pages And Forms
 type application struct{
 	errorLog *log.Logger
 	infoLog  *log.Logger

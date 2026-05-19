@@ -24,7 +24,7 @@ func (app *application) Home(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodPost{
 		// ... some form-processing here
 	}
-	app.Render(w,"index.html",nil)
+	app.tp.Render(w,"index.html",nil)
 }
 
 func (app *application) About(w http.ResponseWriter, r *http.Request) {
@@ -48,4 +48,33 @@ func (app *application) Contact(w http.ResponseWriter, r *http.Request) {
 	if err!=nil{
 		log.Fatal("ERROR: ",err.Error())
 	}
+}
+
+func (app *application) Login(w http.ResponseWriter, r *http.Request) {
+
+	app.infoLog.Printf("%s %s", r.Method, r.URL.Path)
+
+	if r.Method == http.MethodPost {
+		// Handle login form submission here
+		// Example:
+		// email := r.FormValue("email")
+		// password := r.FormValue("password")
+	}
+
+	app.tp.Render(w, "login.html", nil)
+}
+
+func (app *application) Register(w http.ResponseWriter, r *http.Request) {
+
+	app.infoLog.Printf("%s %s", r.Method, r.URL.Path)
+
+	if r.Method == http.MethodPost {
+		// Handle registration form submission here
+		// Example:
+		// name := r.FormValue("name")
+		// email := r.FormValue("email")
+		// password := r.FormValue("password")
+	}
+
+	app.tp.Render(w, "register.html", nil)
 }

@@ -13,6 +13,8 @@ func (app *application) Routes() http.Handler {
 	mux.HandleFunc("/", app.Home)
 	mux.HandleFunc("/about", app.About)
 	mux.HandleFunc("/contact", app.Contact)
+	mux.HandleFunc("/login", app.Login)
+	mux.HandleFunc("/register", app.Register)
 
 	return mux
 }
