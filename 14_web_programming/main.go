@@ -8,13 +8,14 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-// Template rendering with caching
+// Template Layouts And CSS
 type application struct{
 	errorLog *log.Logger
 	infoLog  *log.Logger
 	userRepo UserRepo
 	templateDir string
 	tp *TmpltRenderer
+	publicPath string
 }
 
 func main() {
@@ -30,6 +31,7 @@ func main() {
 		infoLog: log.New(os.Stderr, "ERROR\t",log.Ltime | log.LstdFlags),
 		userRepo: NewSQLUserRepository(db),
 		templateDir: "./14_web_programming/templates",
+		publicPath: "14_web_programming/public",
 	 }
 
 	 app.tp = NewTemplateRenderer(app.templateDir,true) // template rendering with cache

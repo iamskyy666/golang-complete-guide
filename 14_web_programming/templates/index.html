@@ -1,37 +1,54 @@
-<!-- HOME PAGE -->
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Home</title>
-</head>
-<body>
+{{define "content"}}
 
-  <header>
-    <h1>My Simple Website</h1>
+<section class="hero">
+    <div class="container">
+        <h1>Welcome to Our Simple Blog</h1>
+        <p>
+            A lightweight blog built with Golang, net/http, templates, and SQLite.
+        </p>
+    </div>
+</section>
 
-    <nav>
-      <a href="/">Home</a> |
-      <a href="/about">About</a> |
-      <a href="/contact">Contact</a>
-    </nav>
+<section class="posts container">
 
-    <hr />
-  </header>
+    <article class="card">
+        <h2>Learning Golang Backend Development</h2>
 
-  <main>
-    <h2>Welcome to the Homepage!</h2>
+        <p>
+            We are learning routing, handlers, repositories,
+            templates, and backend architecture step by step.
+        </p>
 
-    <p>
-      This is a simple homepage built using Golang and the net/http package.
-    </p>
-  </main>
+        <a href="#" class="more-link">Read More</a>
+    </article>
 
-  <footer>
-    <hr />
-    <p>© 2026 My Website</p>
-  </footer>
+    <article class="card">
+        <h2>Understanding Go Interfaces</h2>
 
-</body>
-</html>
+        <p>
+            Interfaces in Golang help decouple systems and make
+            applications easier to test and maintain.
+        </p>
+
+        <a href="#" class="more-link">Read More</a>
+    </article>
+
+    <article class="card">
+        <h2>Building REST APIs in Go</h2>
+
+        <p>
+            Modern Go backends often focus on JSON APIs using
+            frameworks like Gin or Echo.
+        </p>
+
+        <a href="#" class="more-link">Read More</a>
+    </article>
+
+</section>
+
+<div class="pagination container">
+    <a href="/?page=1" class="more-link">Prev</a>
+    <a href="/?page=2" class="more-link">Next</a>
+</div>
+
+{{end}}

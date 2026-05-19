@@ -34,7 +34,7 @@ func (t *TmpltRenderer) Render(w http.ResponseWriter, templateName string, data 
 		return
 	}
 
-	err = tmplt.Execute(w, data)
+	err = tmplt.ExecuteTemplate(w,"base.html" ,data)
 	if err!=nil{
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -76,7 +76,7 @@ func (t *TmpltRenderer) parseTmplt(tmpltName string)(*template.Template, error){
 
 	files:=[]string{tmpltPath}
 
-	layoutPath:=path.Join(t.tmpltDir,"layout/*.html")
+	layoutPath:=path.Join(t.tmpltDir,"layouts/*.html")
 	layouts,err:=filepath.Glob(layoutPath)
 
 	if err == nil{
