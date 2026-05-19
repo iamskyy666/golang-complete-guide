@@ -8,12 +8,13 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-// Simple template rendering engine
+// Template rendering with caching
 type application struct{
 	errorLog *log.Logger
 	infoLog  *log.Logger
 	userRepo UserRepo
 	templateDir string
+	tp *TmpltRenderer
 }
 
 func main() {
@@ -30,6 +31,8 @@ func main() {
 		userRepo: NewSQLUserRepository(db),
 		templateDir: "./14_web_programming/templates",
 	 }
+
+	 app.tp = NewTemplateRenderer(app.templateDir,true) // template rendering with cache
 
 	 log.Println("Server listening on PORT: 8080 ✅")
 	if err:= app.Serve(); err!=nil{
